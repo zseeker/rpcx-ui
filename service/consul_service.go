@@ -1,4 +1,4 @@
-package main
+package service
 
 import (
 	"encoding/base64"
@@ -19,11 +19,11 @@ type ConsulRegistry struct {
 func (r *ConsulRegistry) initRegistry() {
 	consul.Register()
 
-	if strings.HasPrefix(serverConfig.ServiceBaseURL, "/") {
-		serverConfig.ServiceBaseURL = serverConfig.ServiceBaseURL[1:]
+	if strings.HasPrefix(ServerConfig.ServiceBaseURL, "/") {
+		ServerConfig.ServiceBaseURL = ServerConfig.ServiceBaseURL[1:]
 	}
 
-	kv, err := libkv.NewStore(kvstore.CONSUL, []string{serverConfig.RegistryURL}, nil)
+	kv, err := libkv.NewStore(kvstore.CONSUL, []string{ServerConfig.RegistryURL}, nil)
 	if err != nil {
 		log.Printf("cannot create etcd registry: %v", err)
 		return
@@ -33,11 +33,11 @@ func (r *ConsulRegistry) initRegistry() {
 	return
 }
 
-func (r *ConsulRegistry) fetchServices() []*Service {
+func (r *ConsulRegistry) FetchServices() []*Service {
 	var services []*Service
-	kvs, err := r.kv.List(serverConfig.ServiceBaseURL)
+	kvs, err := r.kv.List(ServerConfig.ServiceBaseURL)
 	if err != nil {
-		log.Printf("failed to list services %s: %v", serverConfig.ServiceBaseURL, err)
+		log.Printf("failed to list services %s: %v", ServerConfig.ServiceBaseURL, err)
 		return services
 	}
 
@@ -52,7 +52,7 @@ func (r *ConsulRegistry) fetchServices() []*Service {
 		for _, n := range nodes {
 			key := string(n.Key[:])
 			i := strings.LastIndex(key, "/")
-			serviceName := strings.TrimPrefix(key[0:i], serverConfig.ServiceBaseURL)
+			serviceName := strings.TrimPrefix(key[0:i], ServerConfig.ServiceBaseURL)
 			var serviceAddr string
 			fields := strings.Split(key, "/")
 			if fields != nil && len(fields) > 1 {
@@ -82,8 +82,8 @@ func (r *ConsulRegistry) fetchServices() []*Service {
 	return services
 }
 
-func (r *ConsulRegistry) deactivateService(name, address string) error {
-	key := path.Join(serverConfig.ServiceBaseURL, name, address)
+func (r *ConsulRegistry) DeactivateService(name, address string) error {
+	key := path.Join(ServerConfig.ServiceBaseURL, name, address)
 
 	kv, err := r.kv.Get(key)
 
@@ -105,8 +105,8 @@ func (r *ConsulRegistry) deactivateService(name, address string) error {
 	return err
 }
 
-func (r *ConsulRegistry) activateService(name, address string) error {
-	key := path.Join(serverConfig.ServiceBaseURL, name, address)
+func (r *ConsulRegistry) ActivateService(name, address string) error {
+	key := path.Join(ServerConfig.ServiceBaseURL, name, address)
 	kv, err := r.kv.Get(key)
 
 	v, err := url.ParseQuery(string(kv.Value[:]))
@@ -123,8 +123,8 @@ func (r *ConsulRegistry) activateService(name, address string) error {
 	return err
 }
 
-func (r *ConsulRegistry) updateMetadata(name, address string, metadata string) error {
-	key := path.Join(serverConfig.ServiceBaseURL, name, address)
+func (r *ConsulRegistry) UpdateMetadata(name, address string, metadata string) error {
+	key := path.Join(ServerConfig.ServiceBaseURL, name, address)
 	err := r.kv.Put(key, []byte(metadata), &kvstore.WriteOptions{IsDir: false})
 	return err
 }

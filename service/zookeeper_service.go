@@ -1,4 +1,4 @@
-package main
+package service
 
 import (
 	"encoding/base64"
@@ -9,17 +9,25 @@ import (
 
 	"github.com/docker/libkv"
 	kvstore "github.com/docker/libkv/store"
-	etcd "github.com/smallnest/libkv-etcdv3-store"
+	"github.com/docker/libkv/store/zookeeper"
 )
 
-type EtcdV3Registry struct {
+type ZooKeeperRegistry struct {
 	kv kvstore.Store
 }
 
-func (r *EtcdV3Registry) initRegistry() {
-	etcd.Register()
+func (r *ZooKeeperRegistry) initRegistry() {
+	zookeeper.Register()
 
-	kv, err := libkv.NewStore(etcd.ETCDV3, []string{serverConfig.RegistryURL}, nil)
+	if strings.HasPrefix(ServerConfig.ServiceBaseURL, "/") {
+		ServerConfig.ServiceBaseURL = ServerConfig.ServiceBaseURL[1:]
+	}
+
+	if strings.HasSuffix(ServerConfig.ServiceBaseURL, "/") {
+		ServerConfig.ServiceBaseURL = ServerConfig.ServiceBaseURL[0 : len(ServerConfig.ServiceBaseURL)-1]
+	}
+
+	kv, err := libkv.NewStore(kvstore.ZK, []string{ServerConfig.RegistryURL}, nil)
 	if err != nil {
 		log.Printf("cannot create etcd registry: %v", err)
 		return
@@ -29,31 +37,27 @@ func (r *EtcdV3Registry) initRegistry() {
 	return
 }
 
-func (r *EtcdV3Registry) fetchServices() []*Service {
+func (r *ZooKeeperRegistry) FetchServices() []*Service {
 	var services []*Service
-	kvs, err := r.kv.List(serverConfig.ServiceBaseURL)
+
+	kvs, err := r.kv.List(ServerConfig.ServiceBaseURL)
 	if err != nil {
-		log.Printf("failed to list services %s: %v", serverConfig.ServiceBaseURL, err)
+		log.Printf("failed to list services %s: %v", ServerConfig.ServiceBaseURL, err)
 		return services
 	}
 
 	for _, value := range kvs {
+		serviceName := value.Key
 
-		nodes, err := r.kv.List(value.Key)
+		nodes, err := r.kv.List(ServerConfig.ServiceBaseURL + "/" + value.Key)
 		if err != nil {
-			log.Printf("failed to list %s: %v", value.Key, err)
+			log.Printf("failed to list  %s: %v", ServerConfig.ServiceBaseURL+"/"+value.Key, err)
 			continue
 		}
 
 		for _, n := range nodes {
-			key := string(n.Key[:])
-			i := strings.LastIndex(key, "/")
-			serviceName := strings.TrimPrefix(key[0:i], serverConfig.ServiceBaseURL)
-			var serviceAddr string
-			fields := strings.Split(key, "/")
-			if fields != nil && len(fields) > 1 {
-				serviceAddr = fields[len(fields)-1]
-			}
+			var serviceAddr = n.Key
+
 			v, err := url.ParseQuery(string(n.Value[:]))
 			if err != nil {
 				log.Println("etcd value parse failed. error: ", err.Error())
@@ -78,8 +82,8 @@ func (r *EtcdV3Registry) fetchServices() []*Service {
 	return services
 }
 
-func (r *EtcdV3Registry) deactivateService(name, address string) error {
-	key := path.Join(serverConfig.ServiceBaseURL, name, address)
+func (r *ZooKeeperRegistry) DeactivateService(name, address string) error {
+	key := path.Join(ServerConfig.ServiceBaseURL, name, address)
 
 	kv, err := r.kv.Get(key)
 
@@ -101,8 +105,8 @@ func (r *EtcdV3Registry) deactivateService(name, address string) error {
 	return err
 }
 
-func (r *EtcdV3Registry) activateService(name, address string) error {
-	key := path.Join(serverConfig.ServiceBaseURL, name, address)
+func (r *ZooKeeperRegistry) ActivateService(name, address string) error {
+	key := path.Join(ServerConfig.ServiceBaseURL, name, address)
 	kv, err := r.kv.Get(key)
 
 	v, err := url.ParseQuery(string(kv.Value[:]))
@@ -119,8 +123,8 @@ func (r *EtcdV3Registry) activateService(name, address string) error {
 	return err
 }
 
-func (r *EtcdV3Registry) updateMetadata(name, address string, metadata string) error {
-	key := path.Join(serverConfig.ServiceBaseURL, name, address)
+func (r *ZooKeeperRegistry) UpdateMetadata(name, address string, metadata string) error {
+	key := path.Join(ServerConfig.ServiceBaseURL, name, address)
 	err := r.kv.Put(key, []byte(metadata), &kvstore.WriteOptions{IsDir: false})
 	return err
 }

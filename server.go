@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/smallnest/rpcx-ui/service"
 	"html/template"
 	"io/ioutil"
 	"log"
@@ -17,8 +18,6 @@ import (
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
 )
-
-var configFile = flag.String("config", "./config.json", "config file")
 
 var store = sessions.NewCookieStore(securecookie.GenerateRandomKey(32))
 
@@ -68,7 +67,7 @@ func renderTemplate(w http.ResponseWriter, name string, data interface{}) error 
 
 func main() {
 	flag.Parse()
-	loadConfig()
+	service.LoadConfig()
 
 	http.HandleFunc("/logout", func(rw http.ResponseWriter, req *http.Request) {
 		session, _ := store.Get(req, "gosessionid")
@@ -86,7 +85,7 @@ func main() {
 			username := r.FormValue("username")
 			password := r.FormValue("password")
 
-			if username == serverConfig.User && password == serverConfig.Password {
+			if username == service.ServerConfig.User && password == service.ServerConfig.Password {
 				session, _ := store.Get(r, "gosessionid")
 				session.Values["userLogin"] = username
 				session.Save(r, w)
@@ -112,7 +111,7 @@ func main() {
 	fs := http.FileServer(http.Dir("web"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
-	http.ListenAndServe(serverConfig.Host+":"+strconv.Itoa(serverConfig.Port), nil)
+	http.ListenAndServe(service.ServerConfig.Host+":"+strconv.Itoa(service.ServerConfig.Port), nil)
 }
 
 func authWrapper(h func(w http.ResponseWriter, r *http.Request)) func(w http.ResponseWriter, r *http.Request) {
@@ -155,7 +154,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 
 func servicesHandler(w http.ResponseWriter, r *http.Request) {
 	data := make(map[string]interface{})
-	data["services"] = reg.fetchServices()
+	data["services"] = service.Reg.FetchServices()
 	renderTemplate(w, r.URL.Path[1:]+".html", data)
 }
 
@@ -168,7 +167,7 @@ func deactivateHandler(w http.ResponseWriter, r *http.Request) {
 		j := strings.Index(s, "@")
 		name := s[0:j]
 		address := s[j+1:]
-		reg.deactivateService(name, address)
+		service.Reg.DeactivateService(name, address)
 	}
 	http.Redirect(w, r, "/services", http.StatusFound)
 }
@@ -182,7 +181,7 @@ func activateHandler(w http.ResponseWriter, r *http.Request) {
 		j := strings.Index(s, "@")
 		name := s[0:j]
 		address := s[j+1:]
-		reg.activateService(name, address)
+		service.Reg.ActivateService(name, address)
 	}
 
 	http.Redirect(w, r, "/services", http.StatusFound)
@@ -199,20 +198,20 @@ func modifyHandler(w http.ResponseWriter, r *http.Request) {
 		j := strings.Index(s, "@")
 		name := s[0:j]
 		address := s[j+1:]
-		reg.updateMetadata(name, address, metadata.Encode())
+		service.Reg.UpdateMetadata(name, address, metadata.Encode())
 	}
 
 	http.Redirect(w, r, "/services", http.StatusFound)
 }
 
 func registryHandler(w http.ResponseWriter, r *http.Request) {
-	oldConfig := serverConfig
+	oldConfig := service.ServerConfig
 	defer func() {
 		if re := recover(); re != nil {
 			bytes, err := json.MarshalIndent(&oldConfig, "", "\t")
 			if err == nil {
 				err = ioutil.WriteFile("./config.json", bytes, 0644)
-				loadConfig()
+				service.LoadConfig()
 			}
 
 			panic(re)
@@ -224,34 +223,16 @@ func registryHandler(w http.ResponseWriter, r *http.Request) {
 		registryURL := r.FormValue("registry_url")
 		basePath := r.FormValue("base_path")
 
-		serverConfig.RegistryType = registryType
-		serverConfig.RegistryURL = registryURL
-		serverConfig.ServiceBaseURL = basePath
+		service.ServerConfig.RegistryType = registryType
+		service.ServerConfig.RegistryURL = registryURL
+		service.ServerConfig.ServiceBaseURL = basePath
 
-		bytes, err := json.MarshalIndent(&serverConfig, "", "\t")
+		bytes, err := json.MarshalIndent(&service.ServerConfig, "", "\t")
 		if err == nil {
 			err = ioutil.WriteFile("./config.json", bytes, 0644)
-			loadConfig()
+			service.LoadConfig()
 		}
 	}
 
-	renderTemplate(w, r.URL.Path[1:]+".html", serverConfig)
-}
-
-type Registry interface {
-	initRegistry()
-	fetchServices() []*Service
-	deactivateService(name, address string) error
-	activateService(name, address string) error
-	updateMetadata(name, address string, metadata string) error
-}
-
-// Service is a service endpoint
-type Service struct {
-	ID       string
-	Name     string
-	Address  string
-	Metadata string
-	State    string
-	Group    string
+	renderTemplate(w, r.URL.Path[1:]+".html", service.ServerConfig)
 }

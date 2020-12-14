@@ -19,8 +19,8 @@ If you want to use zookeeper registry, replace config.json with config_zk.json.
 
 ```json
 {
-  "registry_type": "zookeeper",
-  "registry_url": "localhost:2181",
+  "registry_type": "etcdv3",
+  "registry_url": "localhost:2379",
   "service_base_url":"/rpcx",
   "host": "0.0.0.0",
   "port": 8972,
@@ -36,7 +36,7 @@ As you see, you need set zookeeper url and services base path.
 
 ## Running
 
-You can run `go build -o rpcx-ui *.go` to create the executable file: `rpcx-ui`.
+You can run `go build -o rpcx-ui server.go` to create the executable file: `rpcx-ui`.
 
 Put `rpcx-ui`、`config.json`、`web`、`templates` in a directory, for example, `/opt/rpcx-ui`，
 and then run `./rpcx-ui` to start this http server.
